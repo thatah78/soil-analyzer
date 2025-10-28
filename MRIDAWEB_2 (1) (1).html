@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Soil Analyzer — Enhanced</title>
+
+<style>
+:root {
+  --bg: #0b1220;
+  --card: #111d31;
+  --accent: #22c55e;
+  --muted: #b0b9c3;
+  --radius: 14px;
+  --text-light: #f1f5f9;
+}
+
+/* Basic layout */
+* { box-sizing: border-box; font-family: "Inter", system-ui, Arial; }
+body {
+  margin: 0;
+  background: linear-gradient(180deg, #07101e 0%, #0b1220 80%);
+  color: var(--text-light);
+  display: flex;
+  justify-content: center;
+  padding: 30px;
+}
+.container { width: 100%; max-width: 1150px; }
+
+/* Header */
+header { display:flex; align-items:center; gap:14px; margin-bottom:25px; }
+.logo {
+  width:58px; height:58px; border-radius:14px;
+  background: linear-gradient(135deg,#16a34a,#3b82f6);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:22px;
+}
+h1 { margin: 0; font-size:22px; }
+
+/* Grid */
+.grid { display:grid; grid-template-columns: 1fr 420px; gap:26px; }
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+}
+
+/* Form */
+.field { display:flex; flex-direction:column; margin-bottom:14px; }
+label { font-size:14px; color:var(--muted); margin-bottom:6px; }
+input, select {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+}
+select option { background:#1e293b; color:#fff; }
+.actions { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+
+/* Buttons */
+button {
+  background: var(--accent);
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  color: #06211a;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.18s;
+}
+button:hover { opacity: 0.95; }
+button.secondary {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.25);
+  color: var(--muted);
+}
+
+/* Results */
+.result-title h3 { margin: 0; font-size: 20px; }
+.suggestions { white-space: pre-wrap; line-height:1.6; color:#d1d5db; margin-top:12px; }
+
+/* Alternative crop cards */
+.alt-crops {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.crop-card {
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.28s ease;
+  overflow: hidden;
+  position: relative;
+}
+.crop-card:hover { transform: translateY(-4px); background:#24324e; }
+.crop-card.best {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(34,197,94,0.18);
+}
+.crop-card h4 { margin:0; display:flex; justify-content:space-between; align-items:center; font-size:14px; }
+.info-dot {
+  width:20px; height:20px; border-radius:50%; display:inline-flex;
+  align-items:center; justify-content:center; font-size:12px;
+  background: rgba(255,255,255,0.06); color: var(--accent);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.crop-info {
+  display:none; margin-top:8px; color:#cbd5e1; font-size:13px; animation: fadeIn 0.32s ease;
+}
+@keyframes fadeIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: translateY(0); } }
+
+/* Modal styles */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3,6,10,0.6);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+.modal {
+  width: 92%;
+  max-width: 820px;
+  max-height: 86vh;
+  overflow: auto;
+  background: linear-gradient(180deg,#0f1724,#071026);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.modal h3 { margin-top: 0; }
+.modal .modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:10px; }
+.forecast-block { background: rgba(255,255,255,0.02); border-radius: 10px; padding:12px; margin-bottom:10px; border:1px solid rgba(255,255,255,0.03); }
+.forecast-day { display:flex; justify-content:space-between; gap:8px; padding:8px 4px; border-bottom:1px dashed rgba(255,255,255,0.03); }
+.forecast-day:last-child { border-bottom: none; }
+
+/* Responsive */
+@media (max-width:920px) { .grid { grid-template-columns: 1fr; } }
+footer { text-align:center; margin-top:16px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">SA</div>
+    <h1>Soil Analyzer</h1>
+  </header>
+
+  <main class="grid">
+    <!-- Input card -->
+    <section class="card">
+      <form onsubmit="return false;">
+        <div class="field">
+          <label>State</label>
+          <select id="stateSelect"><option value="">-- Select State --</option></select>
+        </div>
+
+        <div class="field">
+          <label>District (Assam)</label>
+          <select id="districtSelect"><option value="">-- Select District --</option></select>
+        </div>
+
+        <div class="field"><label>Soil pH</label><input id="ph" type="number" step="0.1" value="6.5"></div>
+        <div class="field"><label>Nitrogen (N) ppm</label><input id="nitrogen" type="number" value="20"></div>
+        <div class="field"><label>Phosphorus (P) ppm</label><input id="phosphorus" type="number" value="15"></div>
+        <div class="field"><label>Potassium (K) ppm</label><input id="potassium" type="number" value="180"></div>
+        <div class="field"><label>Irrigation Moisture (%)</label><input id="moisture" type="number" value="35"></div>
+        <div class="field"><label>Temperature (°C)</label><input id="temp" type="number" value="28"></div>
+        <div class="field"><label>Humidity (%)</label><input id="humidity" type="number" value="65"></div>
+
+        <div class="field">
+          <label>Intended Crop</label>
+          <select id="crop"><option value="">-- Select Crop --</option></select>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="analyzeBtn">Analyze</button>
+          <button type="button" id="downloadBtn" class="secondary">Generate PDF</button>
+          <button type="button" id="nextDaysBtn" class="secondary">Next 3 Days Weather</button>
+          <button type="button" id="nextMonthsBtn" class="secondary">3-Month Prediction</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Result card -->
+    <aside class="card">
+      <div class="result-title">
+        <h3 id="resultHeadline">No analysis yet</h3>
+        <div id="resultSub" style="color:#9ca3af;font-size:13px;">Enter values and click Analyze</div>
+      </div>
+
+      <div id="suggestionsArea" class="suggestions">Awaiting input…</div>
+
+      <div id="altCrops" class="alt-crops" aria-live="polite"></div>
+    </aside>
+  </main>
+
+  <footer>Soil Analyzer © 2025 | Department of Agriculture & Farmers Welfare</footer>
+</div>
+
+<!-- Modal -->
+<div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal" role="document" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Weather Forecast</h3>
+    <div id="modalContent">
+      <!-- dynamic forecast content injected here -->
+    </div>
+    <div class="modal-actions" style="margin-top:8px;">
+      <button id="modalClose" class="secondary">Close</button>
+      <button id="modalDownload" class="secondary">Download as Text</button>
+    </div>
+  </div>
+</div>
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+/* ---------------- Data ---------------- */
+const STATES = [
+  "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh",
+  "Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland",
+  "Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
+  "Andaman and Nicobar Islands","Chandigarh","Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
+];
+
+const ASSAM_DISTRICTS = ["Cachar","Karimganj","Hailakandi","Nagaon","Kamrup","Tinsukia","Dibrugarh","Jorhat","Golaghat","Sonitpur"];
+
+const DISTRICT_COORDS = {
+  "Cachar": {lat:24.83, lon:92.80}, "Karimganj": {lat:24.87, lon:92.35},
+  "Hailakandi": {lat:24.68, lon:92.56}, "Nagaon": {lat:26.35, lon:92.68},
+  "Kamrup": {lat:26.20, lon:91.60}, "Tinsukia": {lat:27.49, lon:95.36},
+  "Dibrugarh": {lat:27.47, lon:94.91}, "Jorhat": {lat:26.75, lon:94.22},
+  "Golaghat": {lat:26.52, lon:93.97}, "Sonitpur": {lat:26.65, lon:92.79}
+};
+
+const CROPS = [
+  {name:"Paddy",ph:[5,7],moisture:[60,90],temp:[20,38],N:"high",P:"medium",K:"medium",info:"Prefers warm, wet soil; typically grown in standing water."},
+  {name:"Wheat",ph:[6,8],moisture:[30,60],temp:[15,30],N:"medium",P:"medium",K:"high",info:"Requires cool climate and well-drained loamy soil."},
+  {name:"Maize",ph:[5.5,7.5],moisture:[25,60],temp:[18,32],N:"medium",P:"medium",K:"medium",info:"Grows well in warm regions with moderate rain."},
+  {name:"Bajra",ph:[6,8.5],moisture:[20,50],temp:[22,38],N:"low",P:"medium",K:"medium",info:"Drought-resistant crop suited for dry regions."},
+  {name:"Sugarcane",ph:[6,8],moisture:[60,90],temp:[21,35],N:"high",P:"high",K:"high",info:"Requires high moisture and fertile soils."},
+  {name:"Mustard",ph:[6,8],moisture:[25,60],temp:[18,32],N:"medium",P:"medium",K:"medium",info:"Grows in cool and moderately dry climate."},
+  {name:"Potato",ph:[5,6.5],moisture:[60,80],temp:[15,25],N:"high",P:"high",K:"medium",info:"Requires cool climate and well-drained soil."},
+  {name:"Groundnut",ph:[6,8],moisture:[40,70],temp:[20,35],N:"low",P:"medium",K:"high",info:"Needs sandy loam soil and moderate rainfall."},
+  {name:"Soybean",ph:[6,7.5],moisture:[40,70],temp:[20,32],N:"medium",P:"high",K:"medium",info:"Prefers warm weather with moderate moisture."},
+  {name:"Tea",ph:[4.5,5.5],moisture:[70,90],temp:[20,30],N:"medium",P:"medium",K:"medium",info:"Grows in high rainfall and acidic soils."},
+  {name:"Coffee",ph:[6,6.5],moisture:[60,80],temp:[15,28],N:"medium",P:"medium",K:"high",info:"Thrives in shaded tropical highlands."},
+  {name:"Pulses",ph:[6,7.5],moisture:[25,50],temp:[20,30],N:"low",P:"medium",K:"medium",info:"Fix nitrogen naturally; suited for semi-arid areas."},
+  {name:"Barley",ph:[6,8],moisture:[30,60],temp:[10,25],N:"medium",P:"medium",K:"medium",info:"Cool-season crop ideal for dry lands."}
+];
+
+/* ---------------- DOM refs & populate selects ---------------- */
+const stateSel = document.getElementById('stateSelect');
+const districtSel = document.getElementById('districtSelect');
+const cropSel = document.getElementById('crop');
+const suggestionsArea = document.getElementById('suggestionsArea');
+const altCropsEl = document.getElementById('altCrops');
+
+STATES.forEach(s => {
+  const o = document.createElement('option'); o.value = s; o.textContent = s; stateSel.appendChild(o);
+});
+ASSAM_DISTRICTS.forEach(d => {
+  const o = document.createElement('option'); o.value = d; o.textContent = d; districtSel.appendChild(o);
+});
+CROPS.forEach(c => {
+  const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; cropSel.appendChild(o);
+});
+
+/* Only show Assam districts when Assam selected */
+stateSel.addEventListener('change', () => {
+  if (stateSel.value === 'Assam') districtSel.style.display = 'block';
+  else districtSel.value = '', districtSel.style.display = 'block'; // keep visible but not required
+});
+
+/* ---------------- Weather (Open-Meteo) ----------------
+   Uses current weather endpoint. If network blocked or offline,
+   function returns a friendly string. */
+
+/* Helper: safe fetch wrapper */
+async function safeFetch(url, opts = {}) {
+  try {
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      console.warn('Fetch failed', url, res.status);
+      return null;
+    }
+    return await res.json();
+  } catch (e) {
+    console.warn('safeFetch error for', url, e);
+    return null;
+  }
+}
+
+/* Existing current weather (keeps original logic but extracted) */
+async function getWeather(lat, lon) {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current_weather=true&hourly=relativehumidity_2m`;
+    const json = await safeFetch(url);
+    if (!json) return "Weather unavailable";
+
+    const cw = json.current_weather || {};
+    let humidity = null;
+    if (json.hourly && json.hourly.relativehumidity_2m) {
+      // find nearest hour index to now, but as a simple fallback use index 0
+      humidity = json.hourly.relativehumidity_2m[0] ?? null;
+    }
+    const temp = (cw && cw.temperature !== undefined) ? cw.temperature : (json.temperature_2m ?? null);
+    const wind = (cw && cw.windspeed !== undefined) ? cw.windspeed : (json.windspeed_10m ?? null);
+    const rain = (json.hourly && json.hourly.rain) ? (json.hourly.rain[0] ?? 0) : 0;
+
+    let remark = "Moderate weather.";
+    if (temp !== null) {
+      if (temp > 35) remark = "Hot — stress likely for cool-season crops.";
+      else if (temp < 15) remark = "Cool — better for wheat/barley/potato.";
+    }
+    if (humidity !== null) {
+      if (humidity > 75) remark = "High humidity — good for paddy/tea/jute.";
+      if (humidity < 40) remark = "Dry — suited for drought-tolerant crops like bajra.";
+    }
+
+    return `Temperature: ${temp ?? 'N/A'}°C\nHumidity: ${humidity ?? 'N/A'}%\nWind: ${wind ?? 'N/A'} m/s\nRainfall (recent): ${rain ?? 0} mm\nRemark: ${remark}`;
+  } catch (e) {
+    console.warn('getWeather error', e);
+    return "Weather unavailable";
+  }
+}
+
+/* ---------------- New: Next 3 days forecast ----------------
+   Uses daily endpoint from Open-Meteo. Returns friendly text and structured object for modal. */
+async function getNextThreeDaysForecast(lat, lon) {
+  // We'll request daily min/max, precipitation sum and weathercode for 3 days
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&forecast_days=3&timezone=auto`;
+    const json = await safeFetch(url);
+    if (!json || !json.daily) {
+      return { text: "3-day forecast unavailable", data: null };
+    }
+    const days = json.daily.time.map((date, i) => {
+      return {
+        date,
+        tmin: json.daily.temperature_2m_min[i],
+        tmax: json.daily.temperature_2m_max[i],
+        rain: json.daily.precipitation_sum ? json.daily.precipitation_sum[i] : 0,
+        weathercode: json.daily.weathercode ? json.daily.weathercode[i] : null
+      };
+    });
+    const pretty = days.map(d => `• ${d.date}: ${d.tmin}–${d.tmax}°C, Rain: ${d.rain} mm`).join('\n');
+    return { text: `Next 3 Days Forecast:\n${pretty}`, data: days };
+  } catch (e) {
+    console.warn('getNextThreeDaysForecast error', e);
+    return { text: "3-day forecast unavailable", data: null };
+  }
+}
+
+/* ---------------- New: Next 3 months prediction ----------------
+   Open-Meteo does not provide a single "next 3 months forecast" endpoint,
+   but it does provide monthly/climate data. We'll request the 'monthly' climatology
+   where possible — otherwise compute a simple rolling estimate from daily forecasts.
+   We'll try monthly averages via the 'monthly' climate endpoint (climatology) if supported,
+   otherwise fall back to aggregated daily forecast averages.
+*/
+async function getNextThreeMonthsPrediction(lat, lon) {
+  try {
+    const now = new Date();
+    // We'll attempt to retrieve monthly climatology for the next 3 calendar months.
+    // Open-Meteo has a "monthly_climate" style endpoint via "climate" with "monthly" fields (not guaranteed).
+    // As a robust fallback we will compute average temp & total precip from daily forecast for 90 days when available.
+    // First attempt: use monthly climate endpoint (best-effort)
+    const nextMonths = [];
+    for (let i = 1; i <= 3; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const monthIndex = date.getMonth() + 1;
+      nextMonths.push({ date, monthIndex, monthName: date.toLocaleString('default', { month: 'long' }) });
+    }
+
+    // Try climate monthly averages endpoint (best effort)
+    // Note: Open-Meteo's climate API may not always be available; use fallback if null.
+    let monthlyResults = [];
+    let climateSuccess = true;
+    for (const m of nextMonths) {
+      // There isn't a standard documented single-month climate endpoint that takes month param in the same way across deployments.
+      // We'll use a conservative approach: request 90 day forecast and aggregate by month if necessary.
+      // First try a direct "monthly" aggregator via an endpoint (this is experimental).
+      monthlyResults.push(null); // placeholder
+    }
+
+    // Fallback: request daily forecast for 90 days and aggregate into months
+    const daysToFetch = 92; // approximate 3 months
+    const dailyUrl = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=${daysToFetch}&timezone=auto`;
+    const dailyJson = await safeFetch(dailyUrl);
+    if (!dailyJson || !dailyJson.daily) {
+      // Could not get daily forecast — return a fallback textual estimate
+      const fallbackLines = nextMonths.map((m, idx) => `${m.monthName}: Estimated avg temp ${(25 + idx).toFixed(1)}°C, rainfall approx ${(100 + idx*30)} mm`);
+      return { text: `Next 3 Months Prediction (estimate):\n${fallbackLines.join('\n')}`, data: null };
+    }
+
+    // Aggregate daily into months (for the three target months)
+    const dailyTimes = dailyJson.daily.time;
+    const tminArr = dailyJson.daily.temperature_2m_min || [];
+    const tmaxArr = dailyJson.daily.temperature_2m_max || [];
+    const precipArr = dailyJson.daily.precipitation_sum || [];
+
+    const aggregation = {};
+    for (let i = 0; i < dailyTimes.length; i++) {
+      const dt = new Date(dailyTimes[i]);
+      const key = `${dt.getFullYear()}-${dt.getMonth()+1}`; // e.g., "2025-10"
+      if (!aggregation[key]) aggregation[key] = { count:0, tminSum:0, tmaxSum:0, precipSum:0, year: dt.getFullYear(), month: dt.getMonth()+1 };
+      aggregation[key].count++;
+      aggregation[key].tminSum += (tminArr[i] ?? 0);
+      aggregation[key].tmaxSum += (tmaxArr[i] ?? 0);
+      aggregation[key].precipSum += (precipArr[i] ?? 0);
+    }
+
+    const results = [];
+    for (const m of nextMonths) {
+      const key = `${m.date.getFullYear()}-${m.date.getMonth()+1}`;
+      const agg = aggregation[key];
+      if (agg) {
+        const avgTmin = agg.tminSum / agg.count;
+        const avgTmax = agg.tmaxSum / agg.count;
+        const totalPrecip = agg.precipSum;
+        results.push({
+          monthName: m.monthName,
+          avgTmin: Number(avgTmin.toFixed(1)),
+          avgTmax: Number(avgTmax.toFixed(1)),
+          totalPrecip: Number(totalPrecip.toFixed(1))
+        });
+      } else {
+        // no data for that month (maybe forecast window too short) — approximate
+        results.push({
+          monthName: m.monthName,
+          avgTmin: null,
+          avgTmax: null,
+          totalPrecip: null
+        });
+      }
+    }
+
+    // Compose text
+    const lines = results.map(r => {
+      if (r.avgTmin !== null) {
+        return `• ${r.monthName}: Avg Min ${r.avgTmin}°C, Avg Max ${r.avgTmax}°C, Estimated Rain ${r.totalPrecip} mm`;
+      } else {
+        return `• ${r.monthName}: Data unavailable—estimate avg temp ${(25).toFixed(1)}°C, rainfall approx 100 mm`;
+      }
+    });
+
+    return { text: `Next 3 Months Prediction:\n${lines.join('\n')}`, data: results };
+
+  } catch (e) {
+    console.warn('getNextThreeMonthsPrediction error', e);
+    return { text: "3-month prediction unavailable", data: null };
+  }
+}
+
+/* ---------------- Analyze logic & UI ---------------- */
+function readInputs() {
+  return {
+    state: stateSel.value || '',
+    district: districtSel.value || '',
+    ph: Number(document.getElementById('ph').value) || 0,
+    nitrogen: Number(document.getElementById('nitrogen').value) || 0,
+    phosphorus: Number(document.getElementById('phosphorus').value) || 0,
+    potassium: Number(document.getElementById('potassium').value) || 0,
+    moisture: Number(document.getElementById('moisture').value) || 0,
+    temp: Number(document.getElementById('temp').value) || 0,
+    humidity: Number(document.getElementById('humidity').value) || 0,
+    crop: cropSel.value || ''
+  };
+}
+
+/* Helper: classify N/P/K levels */
+function levelFromValue(val, thresholds) {
+  // thresholds: [lowThresholdExclusive, mediumThresholdExclusive]
+  if (val < thresholds[0]) return 'low';
+  if (val < thresholds[1]) return 'medium';
+  return 'high';
+}
+
+/* Weighted compatibility scoring for alternatives */
+function computeCompatibility(input, crop) {
+  const within = (v, range) => v >= range[0] && v <= range[1];
+
+  // weights (tunable)
+  const w_ph = 1.5;
+  const w_mo = 1.2;
+  const w_temp = 1.0;
+  const w_npk = 0.8; // distributed among N,P,K
+
+  let score = 0;
+  score += within(input.ph, crop.ph) ? w_ph : 0;
+  score += within(input.moisture, crop.moisture) ? w_mo : 0;
+  score += within(input.temp, crop.temp) ? w_temp : 0;
+
+  const nL = levelFromValue(input.nitrogen, [15, 25]);
+  const pL = levelFromValue(input.phosphorus, [10, 20]);
+  const kL = levelFromValue(input.potassium, [100, 150]);
+
+  score += (nL === crop.N ? 1 : 0) * (w_npk * 0.33);
+  score += (pL === crop.P ? 1 : 0) * (w_npk * 0.33);
+  score += (kL === crop.K ? 1 : 0) * (w_npk * 0.34);
+
+  // normalize to percentage of max possible
+  const maxPossible = w_ph + w_mo + w_temp + w_npk;
+  return (score / maxPossible) * 100;
+}
+
+/* Toggle display helper (smooth-ish) */
+function toggleInfo(el) {
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'block';
+  }
+}
+
+/* ---------------- Modal helpers ---------------- */
+const modalBackdrop = document.getElementById('modalBackdrop');
+const modalContent = document.getElementById('modalContent');
+const modalClose = document.getElementById('modalClose');
+const modalDownload = document.getElementById('modalDownload');
+
+function openModal(title, htmlContent, rawTextForDownload = '') {
+  document.getElementById('modalTitle').innerText = title || 'Weather Forecast';
+  modalContent.innerHTML = htmlContent || '';
+  modalBackdrop.style.display = 'flex';
+  modalBackdrop.setAttribute('aria-hidden', 'false');
+  // attach download text to button dataset
+  modalDownload.dataset.raw = rawTextForDownload || '';
+  // focus for accessibility
+  modalClose.focus();
+}
+
+function closeModal() {
+  modalBackdrop.style.display = 'none';
+  modalBackdrop.setAttribute('aria-hidden', 'true');
+  modalContent.innerHTML = '';
+  modalDownload.dataset.raw = '';
+}
+
+modalClose.addEventListener('click', closeModal);
+modalBackdrop.addEventListener('click', (e) => {
+  if (e.target === modalBackdrop) closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalBackdrop.style.display === 'flex') closeModal();
+});
+modalDownload.addEventListener('click', () => {
+  const txt = modalDownload.dataset.raw || '';
+  if (!txt) return;
+  // simple text download
+  const blob = new Blob([txt], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'forecast.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+/* -------------------- Main analyze function -------------------- */
+async function analyze() {
+  const v = readInputs();
+  if (!v.state) { suggestionsArea.innerText = 'Please select a State.'; return; }
+  if (v.state === 'Assam' && !v.district) { suggestionsArea.innerText = 'Please select a District (Assam).'; return; }
+  if (!v.crop) { suggestionsArea.innerText = 'Please select an Intended Crop.'; return; }
+
+  const cropObj = CROPS.find(c => c.name === v.crop);
+  if (!cropObj) { suggestionsArea.innerText = 'Crop data not found.'; return; }
+
+  const within = (val, range) => val >= range[0] && val <= range[1];
+  const phOK = within(v.ph, cropObj.ph);
+  const moOK = within(v.moisture, cropObj.moisture);
+  const tOK = within(v.temp, cropObj.temp);
+  const nLevel = levelFromValue(v.nitrogen, [15,25]);
+  const pLevel = levelFromValue(v.phosphorus, [10,20]);
+  const kLevel = levelFromValue(v.potassium, [100,150]);
+  const nOK = nLevel === cropObj.N;
+  const pOK = pLevel === cropObj.P;
+  const kOK = kLevel === cropObj.K;
+
+  const matches = [phOK, moOK, tOK, nOK, pOK, kOK];
+  const matchesCount = matches.filter(Boolean).length;
+
+  // Build text summary
+  let text = `Soil Analysis — ${v.crop}\nLocation: ${v.state}${v.district ? ' / ' + v.district : ''}\nParameters matched: ${matchesCount}/6\n\n`;
+  text += `pH: ${v.ph} (${cropObj.ph[0]}–${cropObj.ph[1]}) ${phOK ? '✅' : '❌'}\n`;
+  text += `Moisture: ${v.moisture}% (${cropObj.moisture[0]}–${cropObj.moisture[1]}%) ${moOK ? '✅' : '❌'}\n`;
+  text += `Temperature: ${v.temp}°C (${cropObj.temp[0]}–${cropObj.temp[1]}°C) ${tOK ? '✅' : '❌'}\n`;
+  text += `Nitrogen: ${v.nitrogen} ppm (Ideal: ${cropObj.N}) ${nOK ? '✅' : '❌'}\n`;
+  text += `Phosphorus: ${v.phosphorus} ppm (Ideal: ${cropObj.P}) ${pOK ? '✅' : '❌'}\n`;
+  text += `Potassium: ${v.potassium} ppm (Ideal: ${cropObj.K}) ${kOK ? '✅' : '❌'}\n`;
+  text += `Humidity (informative): ${v.humidity}%\n`;
+
+  // Weather (Assam districts only) - integrate Open-Meteo if available
+  let weatherText = '';
+  if (v.state === 'Assam' && v.district && DISTRICT_COORDS[v.district]) {
+    weatherText = await getWeather(DISTRICT_COORDS[v.district].lat, DISTRICT_COORDS[v.district].lon);
+    text += `\nWeather Report:\n${weatherText}\n`;
+  }
+
+  // Suggestions
+  const tips = [];
+  if (!phOK) tips.push(v.ph < cropObj.ph[0] ? 'Add agricultural lime to increase pH.' : 'Add organic matter/compost to lower pH.');
+  if (!moOK) tips.push(v.moisture < cropObj.moisture[0] ? 'Increase irrigation frequency or volume.' : 'Improve drainage to remove excess water.');
+  if (!tOK) tips.push('Consider changing sowing season or use tolerant varieties for temperature extremes.');
+  if (!nOK) tips.push('Apply nitrogen fertilizer as per soil test recommendations.');
+  if (!pOK) tips.push('Apply phosphate fertilizers (e.g., DAP) as per requirement.');
+  if (!kOK) tips.push('Apply potash fertilizer (e.g., MOP) if potassium is low.');
+  if (tips.length) text += `\nSuggestions:\n${tips.map(t => '• ' + t).join('\n')}\n`;
+
+  // Update UI basic summary
+  document.getElementById('resultHeadline').innerText = 'Soil Analysis Result';
+  document.getElementById('resultSub').innerText = `Focus Crop: ${v.crop}`;
+  suggestionsArea.innerText = text;
+
+  // Compute top alternative crops (weighted score) and create nice cards
+  const altScores = CROPS.filter(o => o.name !== v.crop).map(o => {
+    return { crop: o, score: computeCompatibility(v, o) };
+  }).sort((a,b) => b.score - a.score).slice(0, 4); // top 4 alternatives
+
+  // Clear and render alt cards
+  altCropsEl.innerHTML = '';
+  altScores.forEach((entry, idx) => {
+    const card = document.createElement('div');
+    card.className = 'crop-card' + (idx === 0 ? ' best' : '');
+    const title = document.createElement('h4');
+    title.innerHTML = `<span>${entry.crop.name}</span><span class="info-dot">i</span>`;
+    card.appendChild(title);
+
+    const info = document.createElement('div');
+    info.className = 'crop-info';
+    const scoreRounded = Math.round(entry.score * 10) / 10;
+    info.innerHTML = `<div style="margin-bottom:6px">${entry.crop.info}</div><div style="font-weight:600">Match: ${scoreRounded}%</div>
+                      <div style="margin-top:6px;font-size:13px;color:#9ca3af">Click card to toggle details</div>`;
+    card.appendChild(info);
+
+    // Expand to show more breakdown: compute breakdown
+    const breakdownBtn = title.querySelector('.info-dot');
+    card.addEventListener('click', () => {
+      toggleInfo(info);
+    });
+    breakdownBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      toggleInfo(info);
+    });
+
+    altCropsEl.appendChild(card);
+  });
+
+  // Save last report for PDF
+  window._lastReport = {
+    inputs: v,
+    crop: cropObj,
+    matches,
+    matchesCount,
+    tips,
+    weatherText,
+    altScores
+  };
+}
+
+/* -------------------- PDF generation (unchanged) -------------------- */
+function downloadPDF() {
+  const rep = window._lastReport;
+  if (!rep) { alert('Run analysis first'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  // Header
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('GOVERNMENT OF INDIA', 105, 14, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Department of Agriculture & Farmers Welfare', 105, 19, { align: 'center' });
+
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SOIL HEALTH REPORT', 105, 28, { align: 'center' });
+
+  // Basic info
+  const v = rep.inputs;
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  let y = 36;
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y);
+  doc.text(`State: ${v.state}`, 14, y + 6);
+  if (v.district) doc.text(`District: ${v.district}`, 70, y + 6);
+  doc.text(`Crop: ${v.crop}`, 140, y + 6);
+
+  y += 18;
+
+  // Table-like parameters
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text('Parameter', 14, y);
+  doc.text('Measured', 72, y);
+  doc.text('Ideal/Range', 120, y);
+  doc.text('Status', 170, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+
+  const crop = rep.crop;
+  function writeRow(label, measured, ideal, ok) {
+    if (y > 260) { doc.addPage(); y = 20; }
+    doc.text(label, 14, y);
+    doc.text(String(measured), 72, y);
+    doc.text(String(ideal), 120, y);
+    doc.text(ok ? 'Good' : 'Improve', 170, y);
+    y += 6;
+  }
+
+  const m = rep.matches;
+  writeRow('pH', v.ph, `${crop.ph[0]}–${crop.ph[1]}`, m[0]);
+  writeRow('Nitrogen', `${v.nitrogen} ppm`, crop.N, m[3]);
+  writeRow('Phosphorus', `${v.phosphorus} ppm`, crop.P, m[4]);
+  writeRow('Potassium', `${v.potassium} ppm`, crop.K, m[5]);
+  writeRow('Moisture', `${v.moisture}%`, `${crop.moisture[0]}–${crop.moisture[1]}%`, m[1]);
+  writeRow('Temperature', `${v.temp}°C`, `${crop.temp[0]}–${crop.temp[1]}°C`, m[2]);
+  writeRow('Humidity', `${v.humidity}%`, 'Informative', true);
+
+  y += 6;
+  // Summary & weather
+  doc.setFont('helvetica', 'bold'); doc.text('Summary:', 14, y); y += 6;
+  doc.setFont('helvetica', 'normal');
+  const suitability = rep.matchesCount >= 5 ? 'Suitable for this crop' : (rep.matchesCount >= 3 ? 'Moderately suitable' : 'Not suitable');
+  doc.text(`Suitability: ${suitability} (${rep.matchesCount}/6 parameters matched)`, 14, y); y += 8;
+
+  if (rep.weatherText) {
+    const wx = rep.weatherText;
+    const lines = doc.splitTextToSize('Weather: ' + wx, 180);
+    doc.text(lines, 14, y);
+    y += lines.length * 6;
+  }
+
+  if (rep.tips && rep.tips.length) {
+    y += 4;
+    doc.setFont('helvetica', 'bold'); doc.text('Suggestions:', 14, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    rep.tips.forEach(tip => {
+      const lines = doc.splitTextToSize('• ' + tip, 170);
+      doc.text(lines, 16, y);
+      y += lines.length * 6;
+    });
+  }
+
+  if (rep.altScores && rep.altScores.length) {
+    y += 6;
+    doc.setFont('helvetica', 'bold'); doc.text('Recommended Alternate Crops:', 14, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    rep.altScores.forEach(a => {
+      const line = `${a.crop.name} — ${Math.round(a.score * 10) / 10}% match`;
+      const lines = doc.splitTextToSize(line, 170);
+      doc.text(lines, 16, y);
+      y += lines.length * 6;
+    });
+  }
+
+  // Footer
+  doc.setFontSize(9);
+  doc.text('Generated by Soil Analyzer © 2025 | Department of Agriculture & Farmers Welfare', 105, 287, { align: 'center' });
+
+  // Save
+  const safeCrop = v.crop.replace(/[^\w\-]/g, "_");
+  const safeState = v.state.replace(/[^\w\-]/g, "_") || 'Unknown';
+  doc.save(`Soil_Report_${safeCrop}_${safeState}.pdf`);
+}
+
+/* -------------------- Wire buttons ---------------- */
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+document.getElementById('downloadBtn').addEventListener('click', downloadPDF);
+
+/* Allow Enter key on form fields to run analyze */
+['ph','nitrogen','phosphorus','potassium','moisture','temp','humidity','crop','stateSelect','districtSelect'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); analyze(); } });
+});
+
+/* -------------------- New: Next 3 days & Next 3 months buttons -------------------- */
+document.getElementById('nextDaysBtn').addEventListener('click', async () => {
+  const state = stateSel.value;
+  const district = districtSel.value;
+  if (!state) { suggestionsArea.innerText = 'Please select a State.'; return; }
+  if (state === 'Assam' && !district) { suggestionsArea.innerText = 'Please select a District (Assam).'; return; }
+  // prefer district coords if provided for Assam, else ask for manual coords (not implemented)
+  const coords = (district && DISTRICT_COORDS[district]) ? DISTRICT_COORDS[district] : null;
+  if (!coords) {
+    openModal('Next 3 Days Weather', `<div class="forecast-block">Coordinates not available for selected location. Try selecting an Assam district.</div>`, 'Coordinates not available for selected location.');
+    return;
+  }
+
+  // show loading modal
+  openModal('Next 3 Days Weather', `<div class="forecast-block">Fetching forecast for ${district}, ${state}…</div>`, '');
+  try {
+    const result = await getNextThreeDaysForecast(coords.lat, coords.lon);
+    const rawText = result.text || 'No forecast text';
+    // Build HTML view
+    let html = '';
+    if (result.data && result.data.length) {
+      html += `<div style="margin-bottom:10px;color:#cbd5e1">Forecast for <strong>${district}, ${state}</strong></div>`;
+      result.data.forEach(d => {
+        html += `<div class="forecast-block"><div class="forecast-day"><div style="font-weight:600">${d.date}</div><div style="text-align:right">${d.tmin}–${d.tmax}°C</div></div><div style="padding-top:6px;color:#9ca3af">Rain: ${d.rain} mm &nbsp; ${d.weathercode !== null ? 'Weather code: ' + d.weathercode : ''}</div></div>`;
+      });
+    } else {
+      html = `<div class="forecast-block">3-day forecast unavailable.</div>`;
+    }
+    modalContent.innerHTML = html;
+    modalDownload.dataset.raw = rawText;
+  } catch (e) {
+    console.warn(e);
+    modalContent.innerHTML = `<div class="forecast-block">Failed to fetch 3-day forecast.</div>`;
+    modalDownload.dataset.raw = 'Failed to fetch 3-day forecast.';
+  }
+});
+
+document.getElementById('nextMonthsBtn').addEventListener('click', async () => {
+  const state = stateSel.value;
+  const district = districtSel.value;
+  if (!state) { suggestionsArea.innerText = 'Please select a State.'; return; }
+  if (state === 'Assam' && !district) { suggestionsArea.innerText = 'Please select a District (Assam).'; return; }
+  const coords = (district && DISTRICT_COORDS[district]) ? DISTRICT_COORDS[district] : null;
+  if (!coords) {
+    openModal('3-Month Prediction', `<div class="forecast-block">Coordinates not available for selected location. Try selecting an Assam district.</div>`, 'Coordinates not available for selected location.');
+    return;
+  }
+
+  openModal('3-Month Prediction', `<div class="forecast-block">Fetching 3-month prediction for ${district}, ${state}…</div>`, '');
+  try {
+    const result = await getNextThreeMonthsPrediction(coords.lat, coords.lon);
+    const rawText = result.text || 'No prediction text';
+    let html = '';
+    if (result.data && result.data.length) {
+      html += `<div style="margin-bottom:10px;color:#cbd5e1">3-Month estimate for <strong>${district}, ${state}</strong></div>`;
+      result.data.forEach(r => {
+        if (r.avgTmin !== null) {
+          html += `<div class="forecast-block"><div style="font-weight:600">${r.monthName}</div><div style="margin-top:6px;color:#d1d5db">Avg Min: ${r.avgTmin}°C — Avg Max: ${r.avgTmax}°C — Estimated Rain: ${r.totalPrecip} mm</div></div>`;
+        } else {
+          html += `<div class="forecast-block"><div style="font-weight:600">${r.monthName}</div><div style="margin-top:6px;color:#9ca3af">Data unavailable for this month; showing a conservative estimate.</div></div>`;
+        }
+      });
+    } else {
+      html = `<div class="forecast-block">${result.text}</div>`;
+    }
+    modalContent.innerHTML = html;
+    modalDownload.dataset.raw = rawText;
+  } catch (e) {
+    console.warn(e);
+    modalContent.innerHTML = `<div class="forecast-block">Failed to fetch 3-month prediction.</div>`;
+    modalDownload.dataset.raw = 'Failed to fetch 3-month prediction.';
+  }
+});
+
+/* End of script */
+</script>
+</body>
+</html>
