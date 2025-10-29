@@ -58,7 +58,7 @@ input, select {
   font-size: 14px;
 }
 select option { background:#1e293b; color:#fff; }
-.actions { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; }
+.actions { display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; position: relative; }
 
 /* Buttons */
 button {
@@ -76,6 +76,39 @@ button.secondary {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.25);
   color: var(--muted);
+}
+
+/* Dropdown */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  min-width: 200px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  z-index: 200;
+  top: 44px;
+}
+.dropdown-menu button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  text-align: left;
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-weight: 500;
+  cursor: pointer;
+}
+.dropdown-menu button:last-child { border-bottom: none; }
+.dropdown-menu button:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--accent);
 }
 
 /* Results */
@@ -186,8 +219,14 @@ footer { text-align:center; margin-top:16px; color:var(--muted); font-size:13px;
         <div class="actions">
           <button type="button" id="analyzeBtn">Analyze</button>
           <button type="button" id="downloadBtn" class="secondary">Generate PDF</button>
-          <button type="button" id="nextDaysBtn" class="secondary">Next 3 Days Weather</button>
-          <button type="button" id="nextMonthsBtn" class="secondary">3-Month Prediction</button>
+
+          <div class="dropdown">
+            <button type="button" id="weatherDropdownBtn" class="secondary">Weather Forecast ▾</button>
+            <div class="dropdown-menu" id="weatherDropdownMenu">
+              <button type="button" id="nextDaysBtn">🌦 Next 3 Days Forecast</button>
+              <button type="button" id="nextMonthsBtn">📅 3-Month Prediction</button>
+            </div>
+          </div>
         </div>
       </form>
     </section>
@@ -277,10 +316,9 @@ CROPS.forEach(c => {
   const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; cropSel.appendChild(o);
 });
 
-/* Only show Assam districts when Assam selected */
 stateSel.addEventListener('change', () => {
   if (stateSel.value === 'Assam') districtSel.style.display = 'block';
-  else districtSel.value = '', districtSel.style.display = 'block'; // keep visible but not required
+  else districtSel.value = '', districtSel.style.display = 'block';
 });
 
 /* ---------------- Weather (Open-Meteo) ----------------
@@ -312,7 +350,6 @@ async function getWeather(lat, lon) {
     const cw = json.current_weather || {};
     let humidity = null;
     if (json.hourly && json.hourly.relativehumidity_2m) {
-      // find nearest hour index to now, but as a simple fallback use index 0
       humidity = json.hourly.relativehumidity_2m[0] ?? null;
     }
     const temp = (cw && cw.temperature !== undefined) ? cw.temperature : (json.temperature_2m ?? null);
@@ -339,7 +376,6 @@ async function getWeather(lat, lon) {
 /* ---------------- New: Next 3 days forecast ----------------
    Uses daily endpoint from Open-Meteo. Returns friendly text and structured object for modal. */
 async function getNextThreeDaysForecast(lat, lon) {
-  // We'll request daily min/max, precipitation sum and weathercode for 3 days
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&forecast_days=3&timezone=auto`;
     const json = await safeFetch(url);
@@ -367,16 +403,10 @@ async function getNextThreeDaysForecast(lat, lon) {
    Open-Meteo does not provide a single "next 3 months forecast" endpoint,
    but it does provide monthly/climate data. We'll request the 'monthly' climatology
    where possible — otherwise compute a simple rolling estimate from daily forecasts.
-   We'll try monthly averages via the 'monthly' climate endpoint (climatology) if supported,
-   otherwise fall back to aggregated daily forecast averages.
 */
 async function getNextThreeMonthsPrediction(lat, lon) {
   try {
     const now = new Date();
-    // We'll attempt to retrieve monthly climatology for the next 3 calendar months.
-    // Open-Meteo has a "monthly_climate" style endpoint via "climate" with "monthly" fields (not guaranteed).
-    // As a robust fallback we will compute average temp & total precip from daily forecast for 90 days when available.
-    // First attempt: use monthly climate endpoint (best-effort)
     const nextMonths = [];
     for (let i = 1; i <= 3; i++) {
       const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
@@ -384,28 +414,14 @@ async function getNextThreeMonthsPrediction(lat, lon) {
       nextMonths.push({ date, monthIndex, monthName: date.toLocaleString('default', { month: 'long' }) });
     }
 
-    // Try climate monthly averages endpoint (best effort)
-    // Note: Open-Meteo's climate API may not always be available; use fallback if null.
-    let monthlyResults = [];
-    let climateSuccess = true;
-    for (const m of nextMonths) {
-      // There isn't a standard documented single-month climate endpoint that takes month param in the same way across deployments.
-      // We'll use a conservative approach: request 90 day forecast and aggregate by month if necessary.
-      // First try a direct "monthly" aggregator via an endpoint (this is experimental).
-      monthlyResults.push(null); // placeholder
-    }
-
-    // Fallback: request daily forecast for 90 days and aggregate into months
-    const daysToFetch = 92; // approximate 3 months
+    const daysToFetch = 92;
     const dailyUrl = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=${daysToFetch}&timezone=auto`;
     const dailyJson = await safeFetch(dailyUrl);
     if (!dailyJson || !dailyJson.daily) {
-      // Could not get daily forecast — return a fallback textual estimate
       const fallbackLines = nextMonths.map((m, idx) => `${m.monthName}: Estimated avg temp ${(25 + idx).toFixed(1)}°C, rainfall approx ${(100 + idx*30)} mm`);
       return { text: `Next 3 Months Prediction (estimate):\n${fallbackLines.join('\n')}`, data: null };
     }
 
-    // Aggregate daily into months (for the three target months)
     const dailyTimes = dailyJson.daily.time;
     const tminArr = dailyJson.daily.temperature_2m_min || [];
     const tmaxArr = dailyJson.daily.temperature_2m_max || [];
@@ -414,7 +430,7 @@ async function getNextThreeMonthsPrediction(lat, lon) {
     const aggregation = {};
     for (let i = 0; i < dailyTimes.length; i++) {
       const dt = new Date(dailyTimes[i]);
-      const key = `${dt.getFullYear()}-${dt.getMonth()+1}`; // e.g., "2025-10"
+      const key = `${dt.getFullYear()}-${dt.getMonth()+1}`;
       if (!aggregation[key]) aggregation[key] = { count:0, tminSum:0, tmaxSum:0, precipSum:0, year: dt.getFullYear(), month: dt.getMonth()+1 };
       aggregation[key].count++;
       aggregation[key].tminSum += (tminArr[i] ?? 0);
@@ -437,7 +453,6 @@ async function getNextThreeMonthsPrediction(lat, lon) {
           totalPrecip: Number(totalPrecip.toFixed(1))
         });
       } else {
-        // no data for that month (maybe forecast window too short) — approximate
         results.push({
           monthName: m.monthName,
           avgTmin: null,
@@ -447,7 +462,6 @@ async function getNextThreeMonthsPrediction(lat, lon) {
       }
     }
 
-    // Compose text
     const lines = results.map(r => {
       if (r.avgTmin !== null) {
         return `• ${r.monthName}: Avg Min ${r.avgTmin}°C, Avg Max ${r.avgTmax}°C, Estimated Rain ${r.totalPrecip} mm`;
@@ -482,7 +496,6 @@ function readInputs() {
 
 /* Helper: classify N/P/K levels */
 function levelFromValue(val, thresholds) {
-  // thresholds: [lowThresholdExclusive, mediumThresholdExclusive]
   if (val < thresholds[0]) return 'low';
   if (val < thresholds[1]) return 'medium';
   return 'high';
@@ -492,11 +505,10 @@ function levelFromValue(val, thresholds) {
 function computeCompatibility(input, crop) {
   const within = (v, range) => v >= range[0] && v <= range[1];
 
-  // weights (tunable)
   const w_ph = 1.5;
   const w_mo = 1.2;
   const w_temp = 1.0;
-  const w_npk = 0.8; // distributed among N,P,K
+  const w_npk = 0.8;
 
   let score = 0;
   score += within(input.ph, crop.ph) ? w_ph : 0;
@@ -511,7 +523,6 @@ function computeCompatibility(input, crop) {
   score += (pL === crop.P ? 1 : 0) * (w_npk * 0.33);
   score += (kL === crop.K ? 1 : 0) * (w_npk * 0.34);
 
-  // normalize to percentage of max possible
   const maxPossible = w_ph + w_mo + w_temp + w_npk;
   return (score / maxPossible) * 100;
 }
@@ -536,9 +547,7 @@ function openModal(title, htmlContent, rawTextForDownload = '') {
   modalContent.innerHTML = htmlContent || '';
   modalBackdrop.style.display = 'flex';
   modalBackdrop.setAttribute('aria-hidden', 'false');
-  // attach download text to button dataset
   modalDownload.dataset.raw = rawTextForDownload || '';
-  // focus for accessibility
   modalClose.focus();
 }
 
@@ -559,7 +568,6 @@ document.addEventListener('keydown', (e) => {
 modalDownload.addEventListener('click', () => {
   const txt = modalDownload.dataset.raw || '';
   if (!txt) return;
-  // simple text download
   const blob = new Blob([txt], { type: 'text/plain' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -595,7 +603,6 @@ async function analyze() {
   const matches = [phOK, moOK, tOK, nOK, pOK, kOK];
   const matchesCount = matches.filter(Boolean).length;
 
-  // Build text summary
   let text = `Soil Analysis — ${v.crop}\nLocation: ${v.state}${v.district ? ' / ' + v.district : ''}\nParameters matched: ${matchesCount}/6\n\n`;
   text += `pH: ${v.ph} (${cropObj.ph[0]}–${cropObj.ph[1]}) ${phOK ? '✅' : '❌'}\n`;
   text += `Moisture: ${v.moisture}% (${cropObj.moisture[0]}–${cropObj.moisture[1]}%) ${moOK ? '✅' : '❌'}\n`;
@@ -605,14 +612,12 @@ async function analyze() {
   text += `Potassium: ${v.potassium} ppm (Ideal: ${cropObj.K}) ${kOK ? '✅' : '❌'}\n`;
   text += `Humidity (informative): ${v.humidity}%\n`;
 
-  // Weather (Assam districts only) - integrate Open-Meteo if available
   let weatherText = '';
   if (v.state === 'Assam' && v.district && DISTRICT_COORDS[v.district]) {
     weatherText = await getWeather(DISTRICT_COORDS[v.district].lat, DISTRICT_COORDS[v.district].lon);
     text += `\nWeather Report:\n${weatherText}\n`;
   }
 
-  // Suggestions
   const tips = [];
   if (!phOK) tips.push(v.ph < cropObj.ph[0] ? 'Add agricultural lime to increase pH.' : 'Add organic matter/compost to lower pH.');
   if (!moOK) tips.push(v.moisture < cropObj.moisture[0] ? 'Increase irrigation frequency or volume.' : 'Improve drainage to remove excess water.');
@@ -622,17 +627,14 @@ async function analyze() {
   if (!kOK) tips.push('Apply potash fertilizer (e.g., MOP) if potassium is low.');
   if (tips.length) text += `\nSuggestions:\n${tips.map(t => '• ' + t).join('\n')}\n`;
 
-  // Update UI basic summary
   document.getElementById('resultHeadline').innerText = 'Soil Analysis Result';
   document.getElementById('resultSub').innerText = `Focus Crop: ${v.crop}`;
   suggestionsArea.innerText = text;
 
-  // Compute top alternative crops (weighted score) and create nice cards
   const altScores = CROPS.filter(o => o.name !== v.crop).map(o => {
     return { crop: o, score: computeCompatibility(v, o) };
-  }).sort((a,b) => b.score - a.score).slice(0, 4); // top 4 alternatives
+  }).sort((a,b) => b.score - a.score).slice(0, 4);
 
-  // Clear and render alt cards
   altCropsEl.innerHTML = '';
   altScores.forEach((entry, idx) => {
     const card = document.createElement('div');
@@ -648,7 +650,6 @@ async function analyze() {
                       <div style="margin-top:6px;font-size:13px;color:#9ca3af">Click card to toggle details</div>`;
     card.appendChild(info);
 
-    // Expand to show more breakdown: compute breakdown
     const breakdownBtn = title.querySelector('.info-dot');
     card.addEventListener('click', () => {
       toggleInfo(info);
@@ -661,7 +662,6 @@ async function analyze() {
     altCropsEl.appendChild(card);
   });
 
-  // Save last report for PDF
   window._lastReport = {
     inputs: v,
     crop: cropObj,
@@ -673,7 +673,7 @@ async function analyze() {
   };
 }
 
-/* -------------------- PDF generation (unchanged) -------------------- */
+/* -------------------- PDF generation -------------------- */
 function downloadPDF() {
   const rep = window._lastReport;
   if (!rep) { alert('Run analysis first'); return; }
@@ -681,7 +681,6 @@ function downloadPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
-  // Header
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('GOVERNMENT OF INDIA', 105, 14, { align: 'center' });
@@ -693,7 +692,6 @@ function downloadPDF() {
   doc.setFont('helvetica', 'bold');
   doc.text('SOIL HEALTH REPORT', 105, 28, { align: 'center' });
 
-  // Basic info
   const v = rep.inputs;
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -705,7 +703,6 @@ function downloadPDF() {
 
   y += 18;
 
-  // Table-like parameters
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
   doc.text('Parameter', 14, y);
   doc.text('Measured', 72, y);
@@ -734,7 +731,6 @@ function downloadPDF() {
   writeRow('Humidity', `${v.humidity}%`, 'Informative', true);
 
   y += 6;
-  // Summary & weather
   doc.setFont('helvetica', 'bold'); doc.text('Summary:', 14, y); y += 6;
   doc.setFont('helvetica', 'normal');
   const suitability = rep.matchesCount >= 5 ? 'Suitable for this crop' : (rep.matchesCount >= 3 ? 'Moderately suitable' : 'Not suitable');
@@ -770,11 +766,9 @@ function downloadPDF() {
     });
   }
 
-  // Footer
   doc.setFontSize(9);
   doc.text('Generated by Soil Analyzer © 2025 | Department of Agriculture & Farmers Welfare', 105, 287, { align: 'center' });
 
-  // Save
   const safeCrop = v.crop.replace(/[^\w\-]/g, "_");
   const safeState = v.state.replace(/[^\w\-]/g, "_") || 'Unknown';
   doc.save(`Soil_Report_${safeCrop}_${safeState}.pdf`);
@@ -790,25 +784,25 @@ document.getElementById('downloadBtn').addEventListener('click', downloadPDF);
   if (el) el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); analyze(); } });
 });
 
-/* -------------------- New: Next 3 days & Next 3 months buttons -------------------- */
+/* -------------------- New: Next 3 days & Next 3 months buttons (from dropdown) -------------------- */
 document.getElementById('nextDaysBtn').addEventListener('click', async () => {
+  // close dropdown
+  document.getElementById('weatherDropdownMenu').style.display = 'none';
+
   const state = stateSel.value;
   const district = districtSel.value;
   if (!state) { suggestionsArea.innerText = 'Please select a State.'; return; }
   if (state === 'Assam' && !district) { suggestionsArea.innerText = 'Please select a District (Assam).'; return; }
-  // prefer district coords if provided for Assam, else ask for manual coords (not implemented)
   const coords = (district && DISTRICT_COORDS[district]) ? DISTRICT_COORDS[district] : null;
   if (!coords) {
     openModal('Next 3 Days Weather', `<div class="forecast-block">Coordinates not available for selected location. Try selecting an Assam district.</div>`, 'Coordinates not available for selected location.');
     return;
   }
 
-  // show loading modal
   openModal('Next 3 Days Weather', `<div class="forecast-block">Fetching forecast for ${district}, ${state}…</div>`, '');
   try {
     const result = await getNextThreeDaysForecast(coords.lat, coords.lon);
     const rawText = result.text || 'No forecast text';
-    // Build HTML view
     let html = '';
     if (result.data && result.data.length) {
       html += `<div style="margin-bottom:10px;color:#cbd5e1">Forecast for <strong>${district}, ${state}</strong></div>`;
@@ -828,6 +822,9 @@ document.getElementById('nextDaysBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('nextMonthsBtn').addEventListener('click', async () => {
+  // close dropdown
+  document.getElementById('weatherDropdownMenu').style.display = 'none';
+
   const state = stateSel.value;
   const district = districtSel.value;
   if (!state) { suggestionsArea.innerText = 'Please select a State.'; return; }
@@ -864,7 +861,18 @@ document.getElementById('nextMonthsBtn').addEventListener('click', async () => {
   }
 });
 
-/* End of script */
+/* -------------------- Dropdown toggle (UI) -------------------- */
+const dropdownBtn = document.getElementById('weatherDropdownBtn');
+const dropdownMenu = document.getElementById('weatherDropdownMenu');
+dropdownBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  dropdownMenu.style.display = dropdownMenu.style.display === 'block' ? 'none' : 'block';
+});
+document.addEventListener('click', (e) => {
+  if (!dropdownMenu.contains(e.target) && e.target !== dropdownBtn) {
+    dropdownMenu.style.display = 'none';
+  }
+});
 </script>
 </body>
 </html>
